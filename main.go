@@ -26,6 +26,20 @@ func (g *Game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
 		g.y += 2
 	}
+
+	if g.x < 0 {
+		g.x = 0
+	}
+	if g.x > 300 {
+		g.x = 300
+	}
+	if g.y < 0 {
+		g.y = 0
+	}
+	if g.y > 220 {
+		g.y = 220
+	}
+
 	return nil
 }
 
