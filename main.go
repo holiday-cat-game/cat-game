@@ -1,16 +1,23 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+	"image"
 	"image/color"
+	_ "image/png"
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+//go:embed cat.png
+var catPNG []byte
+
 type Game struct {
-	x float32
-	y float32
+	x   float32
+	y   float32
+	cat *ebiten.Image
 }
 
 func (g *Game) Update() error {
@@ -44,8 +51,11 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	orange := color.RGBA{255, 150, 50, 255}
-	vector.DrawFilledRect(screen, g.x, g.y, 20, 20, orange, false)
+	screen.Fill(color.RGBA{200, 230, 250, 255})
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(g.x), float64(g.y))
+	screen.DrawImage(g.cat, op)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -53,9 +63,14 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
+	img, _, err := image.Decode(bytes.NewReader(catPNG))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ebiten.SetWindowSize(640, 480)
 	ebiten.SetWindowTitle("Cat")
-	game := &Game{x: 150, y: 110}
+	game := &Game{x: 150, y: 110, cat: ebiten.NewImageFromImage(img)}
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
