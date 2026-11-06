@@ -11,6 +11,8 @@ import (
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -43,6 +45,20 @@ var bgCombinedPNG []byte
 //go:embed ghost.png
 var ghostPNG []byte
 
+//go:embed music.wav
+var musicWAV []byte
+
+//go:embed sfx_pickup.wav
+var sfxPickupWAV []byte
+
+//go:embed sfx_ghost.wav
+var sfxGhostWAV []byte
+
+//go:embed sfx_gameover.wav
+var sfxGameOverWAV []byte
+
+const sampleRate = 44100
+
 type Game struct {
 	state       string
 	x           float32
@@ -61,6 +77,14 @@ type Game struct {
 	ghost       *ebiten.Image
 	ghostX      float32
 	ghostY      float32
+	speeds      []float32
+	diffNames   []string
+	diff        int
+	music       *audio.Player
+	sfxPickup   *audio.Player
+	sfxGhost    *audio.Player
+	sfxGameOver *audio.Player
+	waitSound   bool
 }
 
 func (g *Game) Update() error {
@@ -71,6 +95,9 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 			g.bg = (g.bg + 1) % len(g.bgs)
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyD) {
+			g.diff = (g.diff + 1) % len(g.speeds)
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.score = 0
 			g.timeLeft = 30 * 60
@@ -78,12 +105,17 @@ func (g *Game) Update() error {
 			g.y = 110
 			g.ghostX = 290
 			g.ghostY = 20
+			g.waitSound = false
 			g.state = "playing"
 		}
 		return nil
 	}
 
 	if g.state == "gameover" {
+		if g.waitSound && !g.sfxGhost.IsPlaying() {
+			playSound(g.sfxGameOver)
+			g.waitSound = false
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.state = "menu"
 		}
@@ -93,6 +125,7 @@ func (g *Game) Update() error {
 	g.timeLeft--
 	if g.timeLeft <= 0 {
 		g.state = "gameover"
+		playSound(g.sfxGameOver)
 		return nil
 	}
 
@@ -128,21 +161,24 @@ func (g *Game) Update() error {
 	if fishCenterX >= g.x && fishCenterX <= g.x+20 &&
 		fishCenterY >= g.y && fishCenterY <= g.y+20 {
 		g.score++
+		playSound(g.sfxPickup)
 		g.fishX = rand.Float32() * 308
 		g.fishY = rand.Float32() * 228
 	}
 
+	speed := g.speeds[g.diff]
+
 	if g.ghostX < g.x {
-		g.ghostX += 0.8
+		g.ghostX += speed
 	}
 	if g.ghostX > g.x {
-		g.ghostX -= 0.8
+		g.ghostX -= speed
 	}
 	if g.ghostY < g.y {
-		g.ghostY += 0.8
+		g.ghostY += speed
 	}
 	if g.ghostY > g.y {
-		g.ghostY -= 0.8
+		g.ghostY -= speed
 	}
 
 	ghostCenterX := g.ghostX + 12
@@ -151,6 +187,8 @@ func (g *Game) Update() error {
 	if ghostCenterX >= g.x && ghostCenterX <= g.x+20 &&
 		ghostCenterY >= g.y && ghostCenterY <= g.y+20 {
 		g.state = "gameover"
+		playSound(g.sfxGhost)
+		g.waitSound = true
 	}
 
 	return nil
@@ -170,24 +208,29 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.state == "menu" {
 		lineColor := color.RGBA{150, 130, 180, 255}
-		vector.DrawFilledRect(screen, 40, 34, 240, 150, color.RGBA{30, 15, 45, 215}, false)
+		vector.DrawFilledRect(screen, 40, 30, 240, 170, color.RGBA{30, 15, 45, 215}, false)
 
-		drawCentered(screen, "HALLOWEEN CAT", 38)
-		vector.DrawFilledRect(screen, 52, 58, 216, 1, lineColor, false)
+		drawCentered(screen, "HALLOWEEN CAT", 32)
+		vector.DrawFilledRect(screen, 52, 52, 216, 1, lineColor, false)
 
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(2, 2)
-		op.GeoM.Translate(62, 74)
+		op.GeoM.Translate(62, 84)
 		screen.DrawImage(g.outfits[g.outfit], op)
 
-		drawCenteredAt(screen, "< "+g.outfitNames[g.outfit]+" >", 190, 68)
-		drawCenteredAt(screen, "Press C to change", 190, 82)
-		vector.DrawFilledRect(screen, 130, 103, 120, 1, lineColor, false)
-		drawCenteredAt(screen, "< "+g.bgNames[g.bg]+" >", 190, 110)
-		drawCenteredAt(screen, "Press B to change", 190, 124)
+		drawCenteredAt(screen, "< "+g.outfitNames[g.outfit]+" >", 190, 56)
+		drawCenteredAt(screen, "Press C to change", 190, 68)
+		vector.DrawFilledRect(screen, 130, 88, 120, 1, lineColor, false)
 
-		vector.DrawFilledRect(screen, 52, 150, 216, 1, lineColor, false)
-		drawCentered(screen, "Press SPACE to start", 160)
+		drawCenteredAt(screen, "< "+g.bgNames[g.bg]+" >", 190, 92)
+		drawCenteredAt(screen, "Press B to change", 190, 104)
+		vector.DrawFilledRect(screen, 130, 124, 120, 1, lineColor, false)
+
+		drawCenteredAt(screen, "< "+g.diffNames[g.diff]+" >", 190, 128)
+		drawCenteredAt(screen, "Press D to change", 190, 140)
+
+		vector.DrawFilledRect(screen, 52, 164, 216, 1, lineColor, false)
+		drawCentered(screen, "Press SPACE to start", 172)
 		return
 	}
 
@@ -217,6 +260,36 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return 320, 240
 }
 
+func loadSound(ctx *audio.Context, data []byte) *audio.Player {
+	stream, err := wav.DecodeWithSampleRate(sampleRate, bytes.NewReader(data))
+	if err != nil {
+		log.Fatal(err)
+	}
+	player, err := ctx.NewPlayer(stream)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return player
+}
+
+func loadMusic(ctx *audio.Context, data []byte) *audio.Player {
+	stream, err := wav.DecodeWithSampleRate(sampleRate, bytes.NewReader(data))
+	if err != nil {
+		log.Fatal(err)
+	}
+	loop := audio.NewInfiniteLoop(stream, stream.Length())
+	player, err := ctx.NewPlayer(loop)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return player
+}
+
+func playSound(p *audio.Player) {
+	p.Rewind()
+	p.Play()
+}
+
 func loadImage(data []byte) *ebiten.Image {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -228,6 +301,7 @@ func loadImage(data []byte) *ebiten.Image {
 func main() {
 	ebiten.SetWindowSize(640, 480)
 	ebiten.SetWindowTitle("Halloween Cat")
+	audioCtx := audio.NewContext(sampleRate)
 	game := &Game{
 		state: "menu",
 		outfits: []*ebiten.Image{
@@ -242,12 +316,21 @@ func main() {
 			loadImage(bgHousePNG),
 			loadImage(bgCombinedPNG),
 		},
-		bgNames: []string{"Graveyard", "Haunted House", "Spooky Town"},
-		fishX:   40,
-		fishY:   40,
-		pumpkin: loadImage(pumpkinPNG),
-		ghost:   loadImage(ghostPNG),
+		bgNames:     []string{"Graveyard", "Haunted House", "Spooky Town"},
+		fishX:       40,
+		fishY:       40,
+		pumpkin:     loadImage(pumpkinPNG),
+		ghost:       loadImage(ghostPNG),
+		speeds:      []float32{0.5, 0.8, 1.0},
+		diffNames:   []string{"Easy", "Medium", "Hard"},
+		diff:        1,
+		music:       loadMusic(audioCtx, musicWAV),
+		sfxPickup:   loadSound(audioCtx, sfxPickupWAV),
+		sfxGhost:    loadSound(audioCtx, sfxGhostWAV),
+		sfxGameOver: loadSound(audioCtx, sfxGameOverWAV),
 	}
+	game.music.SetVolume(0.5)
+	game.music.Play()
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
