@@ -40,6 +40,9 @@ var bgHousePNG []byte
 //go:embed bg_combined.png
 var bgCombinedPNG []byte
 
+//go:embed ghost.png
+var ghostPNG []byte
+
 type Game struct {
 	state       string
 	x           float32
@@ -55,6 +58,9 @@ type Game struct {
 	pumpkin     *ebiten.Image
 	score       int
 	timeLeft    int
+	ghost       *ebiten.Image
+	ghostX      float32
+	ghostY      float32
 }
 
 func (g *Game) Update() error {
@@ -70,6 +76,8 @@ func (g *Game) Update() error {
 			g.timeLeft = 30 * 60
 			g.x = 150
 			g.y = 110
+			g.ghostX = 290
+			g.ghostY = 20
 			g.state = "playing"
 		}
 		return nil
@@ -124,6 +132,27 @@ func (g *Game) Update() error {
 		g.fishY = rand.Float32() * 228
 	}
 
+	if g.ghostX < g.x {
+		g.ghostX += 0.8
+	}
+	if g.ghostX > g.x {
+		g.ghostX -= 0.8
+	}
+	if g.ghostY < g.y {
+		g.ghostY += 0.8
+	}
+	if g.ghostY > g.y {
+		g.ghostY -= 0.8
+	}
+
+	ghostCenterX := g.ghostX + 12
+	ghostCenterY := g.ghostY + 12
+
+	if ghostCenterX >= g.x && ghostCenterX <= g.x+20 &&
+		ghostCenterY >= g.y && ghostCenterY <= g.y+20 {
+		g.state = "gameover"
+	}
+
 	return nil
 }
 
@@ -170,6 +199,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	op.GeoM.Translate(float64(g.x), float64(g.y-6))
 	screen.DrawImage(g.outfits[g.outfit], op)
 
+	gop := &ebiten.DrawImageOptions{}
+	gop.GeoM.Translate(float64(g.ghostX), float64(g.ghostY))
+	screen.DrawImage(g.ghost, gop)
+
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("Pumpkins: %d   Time: %d", g.score, g.timeLeft/60))
 
 	if g.state == "gameover" {
@@ -213,6 +246,7 @@ func main() {
 		fishX:   40,
 		fishY:   40,
 		pumpkin: loadImage(pumpkinPNG),
+		ghost:   loadImage(ghostPNG),
 	}
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
