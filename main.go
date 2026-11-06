@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"log"
 	"math/rand"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -48,6 +49,39 @@ var ghostPNG []byte
 //go:embed music.wav
 var musicWAV []byte
 
+//go:embed cat_santa.png
+var catSantaPNG []byte
+
+//go:embed cat_reindeer.png
+var catReindeerPNG []byte
+
+//go:embed cat_elf.png
+var catElfPNG []byte
+
+//go:embed cat_beanie.png
+var catBeaniePNG []byte
+
+//go:embed bg_village.png
+var bgVillagePNG []byte
+
+//go:embed bg_tree.png
+var bgTreePNG []byte
+
+//go:embed bg_forest_snow.png
+var bgForestSnowPNG []byte
+
+//go:embed gift.png
+var giftPNG []byte
+
+//go:embed cookie.png
+var cookiePNG []byte
+
+//go:embed snowman.png
+var snowmanPNG []byte
+
+//go:embed music_xmas.wav
+var musicXmasWAV []byte
+
 //go:embed sfx_pickup.wav
 var sfxPickupWAV []byte
 
@@ -59,28 +93,36 @@ var sfxGameOverWAV []byte
 
 const sampleRate = 44100
 
-type Game struct {
-	state       string
-	x           float32
-	y           float32
+type Theme struct {
+	title       string
 	outfits     []*ebiten.Image
 	outfitNames []string
-	outfit      int
 	bgs         []*ebiten.Image
 	bgNames     []string
+	targets     []*ebiten.Image
+	targetLabel string
+	enemy       *ebiten.Image
+	music       *audio.Player
+}
+
+type Game struct {
+	state       string
+	themes      []Theme
+	theme       int
+	outfit      int
 	bg          int
-	fishX       float32
-	fishY       float32
-	pumpkin     *ebiten.Image
-	score       int
-	timeLeft    int
-	ghost       *ebiten.Image
-	ghostX      float32
-	ghostY      float32
+	diff        int
 	speeds      []float32
 	diffNames   []string
-	diff        int
-	music       *audio.Player
+	x           float32
+	y           float32
+	fishX       float32
+	fishY       float32
+	target      int
+	ghostX      float32
+	ghostY      float32
+	score       int
+	timeLeft    int
 	sfxPickup   *audio.Player
 	sfxGhost    *audio.Player
 	sfxGameOver *audio.Player
@@ -88,12 +130,21 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
+	t := g.themes[g.theme]
+
 	if g.state == "menu" {
+		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+			t.music.Pause()
+			g.theme = (g.theme + 1) % len(g.themes)
+			g.outfit = 0
+			g.bg = 0
+			playSound(g.themes[g.theme].music)
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-			g.outfit = (g.outfit + 1) % len(g.outfits)
+			g.outfit = (g.outfit + 1) % len(t.outfits)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyB) {
-			g.bg = (g.bg + 1) % len(g.bgs)
+			g.bg = (g.bg + 1) % len(t.bgs)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyD) {
 			g.diff = (g.diff + 1) % len(g.speeds)
@@ -105,6 +156,7 @@ func (g *Game) Update() error {
 			g.y = 110
 			g.ghostX = 290
 			g.ghostY = 20
+			g.target = rand.Intn(len(t.targets))
 			g.waitSound = false
 			g.state = "playing"
 		}
@@ -164,6 +216,7 @@ func (g *Game) Update() error {
 		playSound(g.sfxPickup)
 		g.fishX = rand.Float32() * 308
 		g.fishY = rand.Float32() * 228
+		g.target = rand.Intn(len(t.targets))
 	}
 
 	speed := g.speeds[g.diff]
@@ -204,54 +257,56 @@ func drawCentered(screen *ebiten.Image, text string, y int) {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.DrawImage(g.bgs[g.bg], &ebiten.DrawImageOptions{})
+	t := g.themes[g.theme]
+	screen.DrawImage(t.bgs[g.bg], &ebiten.DrawImageOptions{})
 
 	if g.state == "menu" {
 		lineColor := color.RGBA{150, 130, 180, 255}
-		vector.DrawFilledRect(screen, 40, 30, 240, 170, color.RGBA{30, 15, 45, 215}, false)
+		vector.DrawFilledRect(screen, 40, 24, 240, 182, color.RGBA{30, 15, 45, 215}, false)
 
-		drawCentered(screen, "HALLOWEEN CAT", 32)
-		vector.DrawFilledRect(screen, 52, 52, 216, 1, lineColor, false)
+		drawCentered(screen, "< "+t.title+" >", 26)
+		drawCentered(screen, "Press T to change theme", 38)
+		vector.DrawFilledRect(screen, 52, 58, 216, 1, lineColor, false)
 
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(2, 2)
-		op.GeoM.Translate(62, 84)
-		screen.DrawImage(g.outfits[g.outfit], op)
+		op.GeoM.Translate(62, 90)
+		screen.DrawImage(t.outfits[g.outfit], op)
 
-		drawCenteredAt(screen, "< "+g.outfitNames[g.outfit]+" >", 190, 56)
-		drawCenteredAt(screen, "Press C to change", 190, 68)
-		vector.DrawFilledRect(screen, 130, 88, 120, 1, lineColor, false)
+		drawCenteredAt(screen, "< "+t.outfitNames[g.outfit]+" >", 190, 62)
+		drawCenteredAt(screen, "Press C to change", 190, 74)
+		vector.DrawFilledRect(screen, 130, 94, 120, 1, lineColor, false)
 
-		drawCenteredAt(screen, "< "+g.bgNames[g.bg]+" >", 190, 92)
-		drawCenteredAt(screen, "Press B to change", 190, 104)
-		vector.DrawFilledRect(screen, 130, 124, 120, 1, lineColor, false)
+		drawCenteredAt(screen, "< "+t.bgNames[g.bg]+" >", 190, 98)
+		drawCenteredAt(screen, "Press B to change", 190, 110)
+		vector.DrawFilledRect(screen, 130, 130, 120, 1, lineColor, false)
 
-		drawCenteredAt(screen, "< "+g.diffNames[g.diff]+" >", 190, 128)
-		drawCenteredAt(screen, "Press D to change", 190, 140)
+		drawCenteredAt(screen, "< "+g.diffNames[g.diff]+" >", 190, 134)
+		drawCenteredAt(screen, "Press D to change", 190, 146)
 
-		vector.DrawFilledRect(screen, 52, 164, 216, 1, lineColor, false)
-		drawCentered(screen, "Press SPACE to start", 172)
+		vector.DrawFilledRect(screen, 52, 170, 216, 1, lineColor, false)
+		drawCentered(screen, "Press SPACE to start", 178)
 		return
 	}
 
 	pop := &ebiten.DrawImageOptions{}
 	pop.GeoM.Translate(float64(g.fishX), float64(g.fishY))
-	screen.DrawImage(g.pumpkin, pop)
+	screen.DrawImage(t.targets[g.target], pop)
 
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(g.x), float64(g.y-6))
-	screen.DrawImage(g.outfits[g.outfit], op)
+	screen.DrawImage(t.outfits[g.outfit], op)
 
 	gop := &ebiten.DrawImageOptions{}
 	gop.GeoM.Translate(float64(g.ghostX), float64(g.ghostY))
-	screen.DrawImage(g.ghost, gop)
+	screen.DrawImage(t.enemy, gop)
 
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Pumpkins: %d   Time: %d", g.score, g.timeLeft/60))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("%s: %d   Time: %d", t.targetLabel, g.score, g.timeLeft/60))
 
 	if g.state == "gameover" {
 		vector.DrawFilledRect(screen, 80, 90, 160, 60, color.RGBA{30, 15, 45, 230}, false)
 		drawCentered(screen, "GAME OVER", 96)
-		drawCentered(screen, fmt.Sprintf("You got %d pumpkins!", g.score), 112)
+		drawCentered(screen, fmt.Sprintf("You got %d %s!", g.score, strings.ToLower(t.targetLabel)), 112)
 		drawCentered(screen, "Press SPACE for menu", 128)
 	}
 }
@@ -282,6 +337,7 @@ func loadMusic(ctx *audio.Context, data []byte) *audio.Player {
 	if err != nil {
 		log.Fatal(err)
 	}
+	player.SetVolume(0.5)
 	return player
 }
 
@@ -300,10 +356,11 @@ func loadImage(data []byte) *ebiten.Image {
 
 func main() {
 	ebiten.SetWindowSize(640, 480)
-	ebiten.SetWindowTitle("Halloween Cat")
+	ebiten.SetWindowTitle("Holiday Cat")
 	audioCtx := audio.NewContext(sampleRate)
-	game := &Game{
-		state: "menu",
+
+	halloween := Theme{
+		title: "HALLOWEEN CAT",
 		outfits: []*ebiten.Image{
 			loadImage(catPlainPNG),
 			loadImage(catWitchBlackPNG),
@@ -317,20 +374,48 @@ func main() {
 			loadImage(bgCombinedPNG),
 		},
 		bgNames:     []string{"Graveyard", "Haunted House", "Spooky Town"},
-		fishX:       40,
-		fishY:       40,
-		pumpkin:     loadImage(pumpkinPNG),
-		ghost:       loadImage(ghostPNG),
+		targets:     []*ebiten.Image{loadImage(pumpkinPNG)},
+		targetLabel: "Pumpkins",
+		enemy:       loadImage(ghostPNG),
+		music:       loadMusic(audioCtx, musicWAV),
+	}
+
+	christmas := Theme{
+		title: "CHRISTMAS CAT",
+		outfits: []*ebiten.Image{
+			loadImage(catPlainPNG),
+			loadImage(catSantaPNG),
+			loadImage(catReindeerPNG),
+			loadImage(catElfPNG),
+			loadImage(catBeaniePNG),
+		},
+		outfitNames: []string{"Classic", "Santa", "Reindeer", "Elf", "Beanie"},
+		bgs: []*ebiten.Image{
+			loadImage(bgVillagePNG),
+			loadImage(bgTreePNG),
+			loadImage(bgForestSnowPNG),
+		},
+		bgNames:     []string{"Snowy Village", "Christmas Tree", "Snowy Forest"},
+		targets:     []*ebiten.Image{loadImage(giftPNG), loadImage(cookiePNG)},
+		targetLabel: "Treats",
+		enemy:       loadImage(snowmanPNG),
+		music:       loadMusic(audioCtx, musicXmasWAV),
+	}
+
+	game := &Game{
+		state:       "menu",
+		themes:      []Theme{halloween, christmas},
 		speeds:      []float32{0.5, 0.8, 1.0},
 		diffNames:   []string{"Easy", "Medium", "Hard"},
 		diff:        1,
-		music:       loadMusic(audioCtx, musicWAV),
+		fishX:       40,
+		fishY:       40,
 		sfxPickup:   loadSound(audioCtx, sfxPickupWAV),
 		sfxGhost:    loadSound(audioCtx, sfxGhostWAV),
 		sfxGameOver: loadSound(audioCtx, sfxGameOverWAV),
 	}
-	game.music.SetVolume(0.5)
-	game.music.Play()
+	game.themes[0].music.Play()
+
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
